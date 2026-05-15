@@ -1,10 +1,13 @@
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <algorithm>
 #include <map>
 #include <cmath>
-#include <locale>
+#include <set>
+#include <windows.h>
 
 using std::cout;
 using std::cin;
@@ -13,370 +16,523 @@ using std::string;
 using std::vector;
 using std::map;
 using std::pair;
+using std::set;
+using std::ifstream;
+using std::ofstream;
+using std::getline;
 
-// Структура элемента контента (фильм/сериал/книга/музыка)
+// РЎС‚СЂСѓРєС‚СѓСЂР° РґР»СЏ С…СЂР°РЅРµРЅРёСЏ СЌР»РµРјРµРЅС‚Р° РєРѕРЅС‚РµРЅС‚Р° (С„РёР»СЊРј, СЃРµСЂРёР°Р», РєРЅРёРіР°, РјСѓР·С‹РєР°)
 struct ContentItem
 {
-    string title;        // Название
-    string type;         // "film", "series", "book", "music"
-    string genre;        // Жанр (комедия, драма, рок ...)
-    int ageRating;       // Возрастной рейтинг (0,6,12,16,18)
-    string targetGroup;  // Целевая группа: child, teen, young, adult, middle, senior, elderly
-    int popularity;      // Популярность от 1 до 10 (для алгоритма популярности)
+    string title;         // РќР°Р·РІР°РЅРёРµ
+    string type;          // РўРёРї: film, series, book, music
+    string genre;         // Р–Р°РЅСЂ РёР· СЃРїРёСЃРєР° 20 Р¶Р°РЅСЂРѕРІ
+    int ageRating;        // Р’РѕР·СЂР°СЃС‚РЅРѕР№ СЂРµР№С‚РёРЅРі: 0,6,12,16,18
+    string targetGroup;   // Р¦РµР»РµРІР°СЏ РіСЂСѓРїРїР°: child, teen, young, adult, middle, senior, elderly
+    int popularity;       // РџРѕРїСѓР»СЏСЂРЅРѕСЃС‚СЊ РѕС‚ 1 РґРѕ 10
 };
 
-// Структура оценки пользователя (для коллаборативной фильтрации)
-struct Rating
+// РЎС‚СЂСѓРєС‚СѓСЂР° РґР»СЏ С…СЂР°РЅРµРЅРёСЏ РѕС†РµРЅРєРё РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ
+struct UserRating
 {
-    int userId;          // ID пользователя (0 - текущий, 1..N - другие)
-    int itemId;          // ID элемента контента (индекс в database)
-    int score;           // Оценка от 1 до 5 (1 - ужасно, 5 - отлично)
+    string userName;      // РРјСЏ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ
+    string itemTitle;     // РќР°Р·РІР°РЅРёРµ РѕС†РµРЅРёРІР°РµРјРѕРіРѕ СЌР»РµРјРµРЅС‚Р°
+    int score;            // РћС†РµРЅРєР° РѕС‚ 1 РґРѕ 5
 };
 
-// Класс рекомендательной системы
+// РљР»Р°СЃСЃ СЂРµРєРѕРјРµРЅРґР°С‚РµР»СЊРЅРѕР№ СЃРёСЃС‚РµРјС‹
 class Recommender
 {
 private:
-    // Основная база контента
-    vector<ContentItem> database;
-    // Пользователи и их оценки (для коллаборативной фильтрации)
-    vector<Rating> allRatings;
-    // Возраст текущего пользователя
-    int userAge;
-    // Предпочитаемые жанры текущего пользователя
-    vector<string> preferredGenres;
-    // Группа текущего пользователя (вычисляется)
-    string userGroup;
-    // Максимальный рейтинг по возрасту (0,6,12,16,18)
-    int maxAllowedRating;
+    vector<ContentItem> database;     // Р‘Р°Р·Р° РєРѕРЅС‚РµРЅС‚Р° РІ РїР°РјСЏС‚Рё
+    vector<UserRating> allRatings;    // Р’СЃРµ РѕС†РµРЅРєРё РІСЃРµС… РїРѕР»СЊР·РѕРІР°С‚РµР»РµР№
+    string databaseFilename;          // РРјСЏ С„Р°Р№Р»Р° СЃ Р±Р°Р·РѕР№ РєРѕРЅС‚РµРЅС‚Р°
+    string ratingsFilename;           // РРјСЏ С„Р°Р№Р»Р° СЃ РѕС†РµРЅРєР°РјРё
+    string currentUserName;           // РРјСЏ С‚РµРєСѓС‰РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ
+    int userAge;                      // Р’РѕР·СЂР°СЃС‚ С‚РµРєСѓС‰РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ
+    vector<string> preferredGenres;   // РџСЂРµРґРїРѕС‡РёС‚Р°РµРјС‹Рµ Р¶Р°РЅСЂС‹ С‚РµРєСѓС‰РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ
+    string userGroup;                 // Р“СЂСѓРїРїР° С‚РµРєСѓС‰РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ (child, teen,...)
+    int maxAllowedRating;             // РњР°РєСЃРёРјР°Р»СЊРЅС‹Р№ РІРѕР·СЂР°СЃС‚РЅРѕР№ СЂРµР№С‚РёРЅРі, РґРѕСЃС‚СѓРїРЅС‹Р№ РїРѕР»СЊР·РѕРІР°С‚РµР»СЋ
 
-
-    // Определение группы пользователя и максимального рейтинга по возрасту
-    string determineUserGroup(int age, int& maxRating)
+    // Р—Р°РіСЂСѓР·РєР° Р±Р°Р·С‹ РєРѕРЅС‚РµРЅС‚Р° РёР· С‚РµРєСЃС‚РѕРІРѕРіРѕ С„Р°Р№Р»Р°
+    // Р¤РѕСЂРјР°С‚ СЃС‚СЂРѕРєРё: РЅР°Р·РІР°РЅРёРµ|С‚РёРї|Р¶Р°РЅСЂ|РІРѕР·СЂР°СЃС‚|РіСЂСѓРїРїР°|РїРѕРїСѓР»СЏСЂРЅРѕСЃС‚СЊ
+    bool loadDatabase(const string& filename)
     {
-        if (age <= 12)
+        databaseFilename = filename;                  
+        ifstream file(filename);                      
+        if (!file.is_open()) return false;            // Р•СЃР»Рё С„Р°Р№Р» РЅРµ РѕС‚РєСЂС‹Р»СЃСЏ, РІРµСЂРЅСѓС‚СЊ РѕС€РёР±РєСѓ
+        database.clear();                             // РћС‡РёСЃС‚РёС‚СЊ С‚РµРєСѓС‰СѓСЋ Р±Р°Р·Сѓ
+        string line;                                  // Р‘СѓС„РµСЂ РґР»СЏ С‡С‚РµРЅРёСЏ СЃС‚СЂРѕРєРё
+        while (getline(file, line))                   // Р§РёС‚Р°С‚СЊ РїРѕСЃС‚СЂРѕС‡РЅРѕ РґРѕ РєРѕРЅС†Р° С„Р°Р№Р»Р°
         {
-            maxRating = 6;
-            return "child";
+            if (line.empty()) continue;               // РџСЂРѕРїСѓСЃС‚РёС‚СЊ РїСѓСЃС‚С‹Рµ СЃС‚СЂРѕРєРё
+            std::stringstream ss(line);               // РЎС‚СЂРѕРєРѕРІС‹Р№ РїРѕС‚РѕРє РґР»СЏ СЂР°Р·Р±РѕСЂР°
+            string title, type, genre, targetGroup, ageRatingStr, popularityStr;
+            //РР·РІР»РµС‡РµРЅРёРµ РЅР°Р·РІР°РЅРёСЏ, С‚РёРїР°, Р¶Р°РЅСЂР°, РІРѕР·СЂР°СЃС‚РЅРѕРіРѕ СЂРµР№С‚РёРЅРіР°, С†РµР»РµРІРѕР№ РіСЂСѓРїРїС‹, РїРѕРїСѓР»СЏСЂРЅРѕСЃС‚Рё
+            getline(ss, title, '|');                 
+            getline(ss, type, '|');                
+            getline(ss, genre, '|');                 
+            getline(ss, ageRatingStr, '|');          
+            getline(ss, targetGroup, '|');            
+            getline(ss, popularityStr, '|');          
+            int ageRating = std::stoi(ageRatingStr);  // РџСЂРµРѕР±СЂР°Р·РѕРІР°С‚СЊ СЂРµР№С‚РёРЅРі РІ С‡РёСЃР»Рѕ
+            int popularity = std::stoi(popularityStr);// РџСЂРµРѕР±СЂР°Р·РѕРІР°С‚СЊ РїРѕРїСѓР»СЏСЂРЅРѕСЃС‚СЊ РІ С‡РёСЃР»Рѕ
+            // Р”РѕР±Р°РІРёС‚СЊ РЅРѕРІС‹Р№ СЌР»РµРјРµРЅС‚ РІ РІРµРєС‚РѕСЂ database
+            database.push_back({ title, type, genre, ageRating, targetGroup, popularity });
         }
-        else if (age <= 17)
-        {
-            maxRating = 12;
-            return "teen";
-        }
-        else if (age <= 25)
-        {
-            maxRating = 18;
-            return "young";
-        }
-        else if (age <= 35)
-        {
-            maxRating = 18;
-            return "adult";
-        }
-        else if (age <= 45)
-        {
-            maxRating = 18;
-            return "middle";
-        }
-        else if (age <= 60)
-        {
-            maxRating = 18;
-            return "senior";
-        }
-        else
-        {
-            maxRating = 18;
-            return "elderly";
-        }
+        file.close();                                 
+        return true;                                  
     }
 
-    // Обновление полей userGroup и maxAllowedRating на основе userAge
+    // Р—Р°РіСЂСѓР·РєР° РІСЃРµС… РѕС†РµРЅРѕРє РёР· С„Р°Р№Р»Р°
+    // Р¤РѕСЂРјР°С‚ СЃС‚СЂРѕРєРё: РёРјСЏ_РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ|РЅР°Р·РІР°РЅРёРµ_СЌР»РµРјРµРЅС‚Р°|РѕС†РµРЅРєР°
+    bool loadRatings(const string& filename)
+    {
+        ratingsFilename = filename;                   
+        ifstream file(filename);                     
+        if (!file.is_open()) return true;             
+        allRatings.clear();                           // РћС‡РёСЃС‚РёС‚СЊ С‚РµРєСѓС‰РёР№ СЃРїРёСЃРѕРє РѕС†РµРЅРѕРє
+        string line;                                  
+        while (getline(file, line))                  
+        {
+            if (line.empty()) continue;               // РџСЂРѕРїСѓСЃС‚РёС‚СЊ РїСѓСЃС‚С‹Рµ СЃС‚СЂРѕРєРё
+            std::stringstream ss(line);               // РЎС‚СЂРѕРєРѕРІС‹Р№ РїРѕС‚РѕРє
+            string userName, itemTitle, scoreStr;
+            //РР·РІР»РµС‡РµРЅРёРµ РёРјРµРЅРё РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ, РЅР°Р·РІР°РЅРёСЏ СЌР»РµРјРµРЅС‚Р°, РѕС†РµРЅРєРё
+            getline(ss, userName, '|');               
+            getline(ss, itemTitle, '|');             
+            getline(ss, scoreStr, '|');              
+            int score = std::stoi(scoreStr);          // РџСЂРµРѕР±СЂР°Р·РѕРІР°С‚СЊ РѕС†РµРЅРєСѓ РІ С‡РёСЃР»Рѕ
+            allRatings.push_back({ userName, itemTitle, score }); // Р”РѕР±Р°РІРёС‚СЊ РІ РІРµРєС‚РѕСЂ
+        }
+        file.close();                                
+        return true;                                  
+    }
+
+    // Р”РѕР±Р°РІРёС‚СЊ РѕРґРЅСѓ РѕС†РµРЅРєСѓ РІ С„Р°Р№Р» 
+    bool appendRating(const string& userName, const string& itemTitle, int score)
+    {
+        ofstream file(ratingsFilename, std::ios::app); // РћС‚РєСЂС‹С‚СЊ С„Р°Р№Р» РґР»СЏ РґРѕРїРёСЃС‹РІР°РЅРёСЏ
+        if (!file.is_open()) return false;             
+        file << userName << "|" << itemTitle << "|" << score << "\n"; // Р—Р°РїРёСЃР°С‚СЊ СЃС‚СЂРѕРєСѓ
+        file.close();                                  
+        return true;                                   
+    }
+
+    // РћРїСЂРµРґРµР»РёС‚СЊ РіСЂСѓРїРїСѓ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ Рё РјР°РєСЃРёРјР°Р»СЊРЅС‹Р№ СЂРµР№С‚РёРЅРі РїРѕ РІРѕР·СЂР°СЃС‚Сѓ
+    string determineUserGroup(int age, int& maxRating)
+    {
+        if (age <= 12) { maxRating = 6;  return "child"; }      // Р”РµС‚Рё 0-12 Р»РµС‚
+        else if (age <= 17) { maxRating = 12; return "teen"; }       // РџРѕРґСЂРѕСЃС‚РєРё 13-17
+        else if (age <= 25) { maxRating = 18; return "young"; }      // РњРѕР»РѕРґС‘Р¶СЊ 18-25
+        else if (age <= 35) { maxRating = 18; return "adult"; }      // Р’Р·СЂРѕСЃР»С‹Рµ 26-35
+        else if (age <= 45) { maxRating = 18; return "middle"; }     // РЎСЂРµРґРЅРёР№ РІРѕР·СЂР°СЃС‚ 36-45
+        else if (age <= 60) { maxRating = 18; return "senior"; }     // РЎС‚Р°СЂС€РµРµ РїРѕРєРѕР»РµРЅРёРµ 46-60
+        else { maxRating = 18; return "elderly"; }    // РџРѕР¶РёР»С‹Рµ 60+
+    }
+
+    // РћР±РЅРѕРІРёС‚СЊ РїРѕР»СЏ userGroup Рё maxAllowedRating РІ СЃРѕРѕС‚РІРµС‚СЃС‚РІРёРё СЃ С‚РµРєСѓС‰РёРј userAge
     void updateUserGroupAndRating()
     {
         userGroup = determineUserGroup(userAge, maxAllowedRating);
     }
 
-    // Проверка, подходит ли элемент контента по возрастному рейтингу
+    // РџСЂРѕРІРµСЂРёС‚СЊ, РїРѕРґС…РѕРґРёС‚ Р»Рё СЌР»РµРјРµРЅС‚ РїРѕ РІРѕР·СЂР°СЃС‚Сѓ
     bool isAgeAppropriate(const ContentItem& item)
     {
         return (item.ageRating <= maxAllowedRating);
     }
 
-    // Проверка, подходит ли элемент по целевой группе
+    // РџСЂРѕРІРµСЂРёС‚СЊ, СЃРѕРІРїР°РґР°РµС‚ Р»Рё С†РµР»РµРІР°СЏ РіСЂСѓРїРїР° СЌР»РµРјРµРЅС‚Р° СЃ РіСЂСѓРїРїРѕР№ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ
     bool isTargetGroupMatch(const ContentItem& item)
     {
         return (item.targetGroup == userGroup);
     }
 
-    // Проверка, совпадает ли жанр элемента с предпочтениями пользователя
+    // РџСЂРѕРІРµСЂРёС‚СЊ, РµСЃС‚СЊ Р»Рё Р¶Р°РЅСЂ СЌР»РµРјРµРЅС‚Р° РІ СЃРїРёСЃРєРµ РїСЂРµРґРїРѕС‡С‚РµРЅРёР№ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ
     bool isGenreMatch(const ContentItem& item)
     {
         return (std::find(preferredGenres.begin(), preferredGenres.end(), item.genre) != preferredGenres.end());
     }
 
-public:
-    // Конструктор: заполняет базу контента и синтетические оценки пользователей
-    Recommender()
+    // РџРѕР»СѓС‡РёС‚СЊ Р°СЃСЃРѕС†РёР°С‚РёРІРЅС‹Р№ РјР°СЃСЃРёРІ РѕС†РµРЅРѕРє Р·Р°РґР°РЅРЅРѕРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ (РЅР°Р·РІР°РЅРёРµ -> РѕС†РµРЅРєР°)
+    map<string, int> getUserRatingsMap(const string& userName)
     {
-        // Заполнение базы данных
-        // (Фильмы, сериалы, книги, музыка)
-        // Индексы элементов будут от 0 до N-1 (для рейтингов)
-
-        // ---- Фильмы ----
-        database.push_back({ "Шрек", "film", "комедия", 0, "child", 9 });
-        database.push_back({ "Король Лев", "film", "мультфильм", 0, "child", 10 });
-        database.push_back({ "Гарри Поттер и узник Азкабана", "film", "фэнтези", 12, "teen", 9 });
-        database.push_back({ "Человек-паук", "film", "фантастика", 12, "teen", 8 });
-        database.push_back({ "Брат", "film", "драма", 16, "young", 7 });
-        database.push_back({ "Ночной дозор", "film", "фантастика", 12, "young", 6 });
-        database.push_back({ "Стиляги", "film", "музыкальный", 12, "young", 7 });
-        database.push_back({ "Начало", "film", "фантастика", 16, "young", 9 });
-        database.push_back({ "Брат 2", "film", "драма", 16, "adult", 6 });
-        database.push_back({ "Холоп", "film", "комедия", 12, "adult", 7 });
-        database.push_back({ "Т-34", "film", "военный", 12, "adult", 8 });
-        database.push_back({ "Москва слезам не верит", "film", "драма", 12, "middle", 9 });
-        database.push_back({ "Иван Васильевич меняет профессию", "film", "комедия", 6, "middle", 10 });
-        database.push_back({ "Легенда №17", "film", "спорт", 6, "middle", 8 });
-        database.push_back({ "Движение вверх", "film", "спорт", 6, "senior", 7 });
-        database.push_back({ "Адмирал", "film", "исторический", 12, "senior", 6 });
-        database.push_back({ "Судьба человека", "film", "драма", 12, "elderly", 8 });
-        database.push_back({ "Офицеры", "film", "драма", 12, "elderly", 9 });
-
-        // ---- Сериалы ----
-        database.push_back({ "Метод", "series", "детектив", 18, "adult", 6 });
-        database.push_back({ "Триггер", "series", "драма", 16, "young", 7 });
-        database.push_back({ "Полицейский с Рублёвки", "series", "комедия", 16, "adult", 8 });
-        database.push_back({ "Ольга", "series", "комедия", 16, "middle", 7 });
-        database.push_back({ "Эпидемия", "series", "фантастика", 16, "young", 6 });
-        database.push_back({ "Перевал Дятлова", "series", "детектив", 16, "adult", 6 });
-        database.push_back({ "Друзья", "series", "комедия", 12, "teen", 9 });
-        database.push_back({ "Игра престолов", "series", "фэнтези", 18, "young", 10 });
-        database.push_back({ "Корона", "series", "драма", 16, "senior", 8 });
-
-        // ---- Книги ----
-        database.push_back({ "Гарри Поттер и филос. камень", "book", "фэнтези", 6, "child", 9 });
-        database.push_back({ "Метро 2033", "book", "фантастика", 16, "young", 7 });
-        database.push_back({ "Generation П", "book", "сатира", 18, "adult", 5 });
-        database.push_back({ "Война и мир", "book", "роман", 12, "middle", 8 });
-        database.push_back({ "Мастер и Маргарита", "book", "мистика", 16, "adult", 9 });
-        database.push_back({ "Двенадцать стульев", "book", "комедия", 12, "senior", 8 });
-        database.push_back({ "Азазель", "book", "детектив", 12, "middle", 7 });
-        database.push_back({ "Пикник на обочине", "book", "фантастика", 12, "young", 7 });
-        database.push_back({ "1984", "book", "антиутопия", 16, "young", 9 });
-        database.push_back({ "Убить пересмешника", "book", "драма", 12, "middle", 8 });
-
-        // ---- Музыка ----
-        database.push_back({ "Детские песни", "music", "детская", 0, "child", 7 });
-        database.push_back({ "Кино - Группа крови", "music", "рок", 12, "young", 9 });
-        database.push_back({ "Oxxxymiron - Горгород", "music", "хип-хоп", 18, "young", 7 });
-        database.push_back({ "Face - Юморист", "music", "хип-хоп", 16, "young", 6 });
-        database.push_back({ "Ленинград - WWW", "music", "рок", 18, "adult", 8 });
-        database.push_back({ "Монеточка - Раскраски", "music", "поп", 12, "adult", 6 });
-        database.push_back({ "ДДТ - Что такое осень", "music", "рок", 0, "middle", 9 });
-        database.push_back({ "Сплин - Выхода нет", "music", "рок", 0, "middle", 8 });
-        database.push_back({ "Чайковский - Лебединое озеро", "music", "классика", 0, "middle", 7 });
-        database.push_back({ "Толкунова - Нежность", "music", "эстрада", 0, "senior", 8 });
-        database.push_back({ "Зыкина - Течёт река Волга", "music", "народная", 0, "senior", 8 });
-        database.push_back({ "Высоцкий - Кони", "music", "авторская", 12, "elderly", 9 });
-        database.push_back({ "Кобзон - День Победы", "music", "эстрада", 0, "elderly", 9 });
-        database.push_back({ "Queen - Bohemian Rhapsody", "music", "рок", 0, "young", 10 });
-        database.push_back({ "The Beatles - Yesterday", "music", "рок", 0, "middle", 10 });
-        database.push_back({ "Sinatra - My Way", "music", "джаз", 0, "senior", 9 });
-
-        // Синтетические оценки пользователей
-        // Создаём 6 фейковых пользователей (userId = 1..6) с разными предпочтениями
-        // Каждый пользователь оценил несколько элементов (itemId – индекс в database)
-        // Оценка от 1 до 5.
-        // Для простоты используем реальные индексы, которые видны при добавлении (0,1,2,...)
-
-        // Пользователь 1: подросток, любит фэнтези и комедии
-        allRatings.push_back({ 1, 2, 5 });  // Гарри Поттер (индекс 2)
-        allRatings.push_back({ 1, 3, 4 });  // Человек-паук
-        allRatings.push_back({ 1, 22, 4 }); // Друзья
-        allRatings.push_back({ 1, 28, 5 }); // Гарри Поттер книга (индекс 28)
-
-    }
-
-    // Второй этап конструктора: после того как database полностью заполнена,
-    // добавим оценки (вызывается отдельно после заполнения базы)
-    void initRatings()
-    {
-        // Теперь индексы точно известны. Создадим отображение "название -> индекс" для удобства.
-        map<string, int> titleToIndex;
-        for (size_t i = 0; i < database.size(); ++i)
+        map<string, int> ratings;                     // РџСѓСЃС‚РѕР№ РєРѕРЅС‚РµР№РЅРµСЂ
+        for (const UserRating& r : allRatings)        // РџРµСЂРµР±СЂР°С‚СЊ РІСЃРµ РѕС†РµРЅРєРё
         {
-            titleToIndex[database[i].title] = i;
+            if (r.userName == userName)               // Р•СЃР»Рё РѕС†РµРЅРєР° РїСЂРёРЅР°РґР»РµР¶РёС‚ РЅСѓР¶РЅРѕРјСѓ РїРѕР»СЊР·РѕРІР°С‚РµР»СЋ
+            {
+                ratings[r.itemTitle] = r.score;       // Р”РѕР±Р°РІРёС‚СЊ РІ map
+            }
         }
-
-        // Пользователь 1 (подросток 15 лет, любит фэнтези)
-        allRatings.push_back({ 1, titleToIndex["Гарри Поттер и узник Азкабана"], 5 });
-        allRatings.push_back({ 1, titleToIndex["Человек-паук"], 4 });
-        allRatings.push_back({ 1, titleToIndex["Друзья"], 5 });
-        allRatings.push_back({ 1, titleToIndex["Гарри Поттер и филос. камень"], 5 });
-
-        // Пользователь 2 (молодёжь 20 лет, любит драму и рок)
-        allRatings.push_back({ 2, titleToIndex["Брат"], 5 });
-        allRatings.push_back({ 2, titleToIndex["Начало"], 4 });
-        allRatings.push_back({ 2, titleToIndex["Кино - Группа крови"], 5 });
-        allRatings.push_back({ 2, titleToIndex["Игра престолов"], 4 });
-
-        // Пользователь 3 (взрослый 30 лет, комедии и поп)
-        allRatings.push_back({ 3, titleToIndex["Холоп"], 4 });
-        allRatings.push_back({ 3, titleToIndex["Иван Васильевич меняет профессию"], 5 });
-        allRatings.push_back({ 3, titleToIndex["Монеточка - Раскраски"], 4 });
-
-        // Пользователь 4 (средний возраст 40 лет, классика, драма)
-        allRatings.push_back({ 4, titleToIndex["Москва слезам не верит"], 5 });
-        allRatings.push_back({ 4, titleToIndex["Война и мир"], 5 });
-        allRatings.push_back({ 4, titleToIndex["Чайковский - Лебединое озеро"], 4 });
-
-        // Пользователь 5 (старшее поколение 55 лет, историческое, народная)
-        allRatings.push_back({ 5, titleToIndex["Адмирал"], 5 });
-        allRatings.push_back({ 5, titleToIndex["Зыкина - Течёт река Волга"], 5 });
-
-        // Пользователь 6 (пожилой 70 лет, военное, авторская песня)
-        allRatings.push_back({ 6, titleToIndex["Судьба человека"], 5 });
-        allRatings.push_back({ 6, titleToIndex["Офицеры"], 5 });
-        allRatings.push_back({ 6, titleToIndex["Высоцкий - Кони"], 5 });
+        return ratings;                               // Р’РµСЂРЅСѓС‚СЊ СЂРµР·СѓР»СЊС‚Р°С‚
     }
 
-
-    // Установка возраста и жанров текущего пользователя
-    void setUserAge(int age)
+    // Р’С‹С‡РёСЃР»РёС‚СЊ РєРѕСЃРёРЅСѓСЃРЅРѕРµ СЃС…РѕРґСЃС‚РІРѕ РјРµР¶РґСѓ РґРІСѓРјСЏ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏРјРё РЅР° РѕСЃРЅРѕРІРµ РёС… РѕС†РµРЅРѕРє
+    double cosineSimilarity(const map<string, int>& ratingsA, const map<string, int>& ratingsB)
     {
-        userAge = age;
-        updateUserGroupAndRating();
+        double dot = 0.0;       // РЎРєР°Р»СЏСЂРЅРѕРµ РїСЂРѕРёР·РІРµРґРµРЅРёРµ РІРµРєС‚РѕСЂРѕРІ РѕС†РµРЅРѕРє
+        double normA = 0.0;     // РљРІР°РґСЂР°С‚ РЅРѕСЂРјС‹ РІРµРєС‚РѕСЂР° A
+        double normB = 0.0;     // РљРІР°РґСЂР°С‚ РЅРѕСЂРјС‹ РІРµРєС‚РѕСЂР° B
+        // Р’С‹С‡РёСЃР»РёС‚СЊ СЃРєР°Р»СЏСЂРЅРѕРµ РїСЂРѕРёР·РІРµРґРµРЅРёРµ Рё РєРІР°РґСЂР°С‚ РЅРѕСЂРјС‹ РґР»СЏ A
+        for (const auto& pairA : ratingsA)
+        {
+            string item = pairA.first;
+            int scoreA = pairA.second;
+            auto it = ratingsB.find(item);
+            if (it != ratingsB.end())
+            {
+                dot += scoreA * it->second;           // Р”РѕР±Р°РІРёС‚СЊ РІРєР»Р°Рґ РІ СЃРєР°Р»СЏСЂРЅРѕРµ РїСЂРѕРёР·РІРµРґРµРЅРёРµ
+            }
+            normA += scoreA * scoreA;                 // РќР°РєРѕРїРёС‚СЊ РєРІР°РґСЂР°С‚ РЅРѕСЂРјС‹ A
+        }
+        // Р’С‹С‡РёСЃР»РёС‚СЊ РєРІР°РґСЂР°С‚ РЅРѕСЂРјС‹ РґР»СЏ B
+        for (const auto& pairB : ratingsB)
+        {
+            normB += pairB.second * pairB.second;
+        }
+        // Р•СЃР»Рё С…РѕС‚СЏ Р±С‹ РѕРґРёРЅ РІРµРєС‚РѕСЂ РЅСѓР»РµРІРѕР№, СЃС…РѕРґСЃС‚РІРѕ СЂР°РІРЅРѕ 0
+        if (normA == 0 || normB == 0) return 0.0;
+        return dot / (sqrt(normA) * sqrt(normB));     // РљРѕСЃРёРЅСѓСЃ СѓРіР»Р° РјРµР¶РґСѓ РІРµРєС‚РѕСЂР°РјРё
     }
 
-    void setPreferredGenres(const vector<string>& genres)
+    // РџРѕР»СѓС‡РёС‚СЊ СЃРїРёСЃРѕРє РІСЃРµС… РїРѕР»СЊР·РѕРІР°С‚РµР»РµР№, РєСЂРѕРјРµ С‚РµРєСѓС‰РµРіРѕ
+    vector<string> getAllOtherUsers()
     {
-        preferredGenres = genres;
+        set<string> users;                            // РњРЅРѕР¶РµСЃС‚РІРѕ РґР»СЏ СѓРЅРёРєР°Р»СЊРЅС‹С… РёРјС‘РЅ
+        for (const UserRating& r : allRatings)        // РџРµСЂРµР±СЂР°С‚СЊ РІСЃРµ РѕС†РµРЅРєРё
+        {
+            if (r.userName != currentUserName)        // РСЃРєР»СЋС‡РёС‚СЊ С‚РµРєСѓС‰РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ
+            {
+                users.insert(r.userName);             // Р”РѕР±Р°РІРёС‚СЊ РёРјСЏ РІ РјРЅРѕР¶РµСЃС‚РІРѕ
+            }
+        }
+        return vector<string>(users.begin(), users.end()); // РџСЂРµРѕР±СЂР°Р·РѕРІР°С‚СЊ РјРЅРѕР¶РµСЃС‚РІРѕ РІ РІРµРєС‚РѕСЂ
     }
 
-    // Алгоритм 1: На основе правил (возраст + жанры + целевая группа)
-    // Возвращает вектор названий 
+    // РњРµС‚СЂРёРєР° С‚РѕС‡РЅРѕСЃС‚Рё: РґРѕР»СЏ СЂРµРєРѕРјРµРЅРґР°С†РёР№, Р¶Р°РЅСЂ РєРѕС‚РѕСЂС‹С… СЃРѕРІРїР°РґР°РµС‚ СЃ РїСЂРµРґРїРѕС‡С‚РµРЅРёСЏРјРё
+    double precision(const vector<string>& recommendations)
+    {
+        if (recommendations.empty()) return 0.0;      // Р•СЃР»Рё РЅРµС‚ СЂРµРєРѕРјРµРЅРґР°С†РёР№, С‚РѕС‡РЅРѕСЃС‚СЊ 0
+        int matches = 0;                              // РЎС‡С‘С‚С‡РёРє СЃРѕРІРїР°РґРµРЅРёР№
+        for (const string& title : recommendations)   // Р”Р»СЏ РєР°Р¶РґРѕР№ СЂРµРєРѕРјРµРЅРґРѕРІР°РЅРЅРѕР№ РїРѕР·РёС†РёРё
+        {
+            for (const ContentItem& item : database)  // РќР°Р№С‚Рё РµС‘ РІ Р±Р°Р·Рµ
+            {
+                if (item.title == title && isGenreMatch(item))
+                {
+                    matches++;                        // Р–Р°РЅСЂ СЃРѕРІРїР°Р», СѓРІРµР»РёС‡РёС‚СЊ СЃС‡С‘С‚С‡РёРє
+                    break;
+                }
+            }
+        }
+        return (double)matches / recommendations.size(); // Р’РµСЂРЅСѓС‚СЊ РґРѕР»СЋ
+    }
 
+    // Р’С‹С‡РёСЃР»РёС‚СЊ СЃСЂРµРґРЅСЋСЋ РїРѕРїСѓР»СЏСЂРЅРѕСЃС‚СЊ СЂРµРєРѕРјРµРЅРґРѕРІР°РЅРЅС‹С… СЌР»РµРјРµРЅС‚РѕРІ
+    double avgPopularity(const vector<string>& recommendations)
+    {
+        if (recommendations.empty()) return 0.0;      // Р•СЃР»Рё РЅРµС‚ СЂРµРєРѕРјРµРЅРґР°С†РёР№, РІРµСЂРЅСѓС‚СЊ 0
+        double sum = 0.0;                             // РЎСѓРјРјР° РїРѕРїСѓР»СЏСЂРЅРѕСЃС‚РµР№
+        int count = 0;                                // РљРѕР»РёС‡РµСЃС‚РІРѕ РЅР°Р№РґРµРЅРЅС‹С… СЌР»РµРјРµРЅС‚РѕРІ
+        for (const string& title : recommendations)   // Р”Р»СЏ РєР°Р¶РґРѕР№ РїРѕР·РёС†РёРё
+        {
+            for (const ContentItem& item : database)  // РќР°Р№С‚Рё СЌР»РµРјРµРЅС‚ РІ Р±Р°Р·Рµ
+            {
+                if (item.title == title)
+                {
+                    sum += item.popularity;           // Р”РѕР±Р°РІРёС‚СЊ РїРѕРїСѓР»СЏСЂРЅРѕСЃС‚СЊ
+                    count++;                          // РЈРІРµР»РёС‡РёС‚СЊ СЃС‡С‘С‚С‡РёРє
+                    break;
+                }
+            }
+        }
+        return sum / count;                           // Р’РµСЂРЅСѓС‚СЊ СЃСЂРµРґРЅРµРµ
+    }
+
+public:
+    // РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ: Р·Р°РіСЂСѓР·РёС‚СЊ Р±Р°Р·Сѓ РєРѕРЅС‚РµРЅС‚Р° Рё РѕС†РµРЅРєРё РёР· С„Р°Р№Р»РѕРІ
+    bool init(const string& dbFile, const string& ratingsFile)
+    {
+        if (!loadDatabase(dbFile)) return false;      
+        if (!loadRatings(ratingsFile)) return false;  
+        return true;                                 
+    }
+
+    void setCurrentUser(const string& name) { currentUserName = name; }
+    void setUserAge(int age) { userAge = age; updateUserGroupAndRating(); }
+    void setPreferredGenres(const vector<string>& genres) { preferredGenres = genres; }
+
+    // Р”РѕР±Р°РІР»РµРЅРёРµ РЅРѕРІРѕРіРѕ РєРѕРЅС‚РµРЅС‚Р° РїРѕР»СЊР·РѕРІР°С‚РµР»РµРј
+    bool addContentItem()
+    {
+        ContentItem newItem;                          // РЎРѕР·РґР°С‚СЊ РІСЂРµРјРµРЅРЅС‹Р№ РѕР±СЉРµРєС‚
+        cout << "\n--- Р”РѕР±Р°РІР»РµРЅРёРµ РЅРѕРІРѕРіРѕ РєРѕРЅС‚РµРЅС‚Р° ---\n";
+        cout << "РќР°Р·РІР°РЅРёРµ: ";
+        cin.ignore();                                 // РћС‡РёСЃС‚РёС‚СЊ Р±СѓС„РµСЂ РІРІРѕРґР°
+        getline(cin, newItem.title);                  // Р’РІРµСЃС‚Рё РЅР°Р·РІР°РЅРёРµ
+        if (newItem.title.empty())                    // РџСЂРѕРІРµСЂРёС‚СЊ, С‡С‚Рѕ РЅР°Р·РІР°РЅРёРµ РЅРµ РїСѓСЃС‚РѕРµ
+        {
+            cout << "РќР°Р·РІР°РЅРёРµ РЅРµ РјРѕР¶РµС‚ Р±С‹С‚СЊ РїСѓСЃС‚С‹Рј.\n";
+            return false;
+        }
+        // РџСЂРѕРІРµСЂРєР° РЅР° СЃСѓС‰РµСЃС‚РІРѕРІР°РЅРёРµ С‚Р°РєРѕРіРѕ Р¶Рµ РЅР°Р·РІР°РЅРёСЏ РІ Р±Р°Р·Рµ
+        for (const ContentItem& item : database)
+        {
+            if (item.title == newItem.title)
+            {
+                cout << "РћС€РёР±РєР°: СЌР»РµРјРµРЅС‚ \"" << newItem.title << "\" СѓР¶Рµ РµСЃС‚СЊ РІ Р±Р°Р·Рµ.\n";
+                return false;
+            }
+        }
+        // Р’С‹Р±РѕСЂ С‚РёРїР° РєРѕРЅС‚РµРЅС‚Р°
+        cout << "РўРёРї РєРѕРЅС‚РµРЅС‚Р°:\n";
+        cout << "1 - Р¤РёР»СЊРј\n2 - РЎРµСЂРёР°Р»\n3 - РљРЅРёРіР°\n4 - РњСѓР·С‹РєР°\n";
+        cout << "Р’Р°С€ РІС‹Р±РѕСЂ (1-4): ";
+        int typeCode;
+        cin >> typeCode;
+        if (typeCode == 1) newItem.type = "film";
+        else if (typeCode == 2) newItem.type = "series";
+        else if (typeCode == 3) newItem.type = "book";
+        else if (typeCode == 4) newItem.type = "music";
+        else
+        {
+            cout << "РќРµРІРµСЂРЅС‹Р№ С‚РёРї.\n";
+            return false;
+        }
+        // РЎРїРёСЃРѕРє Р¶Р°РЅСЂРѕРІ (20 С€С‚СѓРє) РґР»СЏ РѕС‚РѕР±СЂР°Р¶РµРЅРёСЏ Рё РІС‹Р±РѕСЂР°
+        vector<string> genresList = {
+            "РєРѕРјРµРґРёСЏ", "РґСЂР°РјР°", "С„Р°РЅС‚Р°СЃС‚РёРєР°", "СѓР¶Р°СЃС‹", "РґРµС‚РµРєС‚РёРІ",
+            "СЂРѕРє", "РїРѕРї", "С…РёРї-С…РѕРї", "РєР»Р°СЃСЃРёРєР°", "СЃРїРѕСЂС‚", "РІРѕРµРЅРЅС‹Р№",
+            "РјРёСЃС‚РёРєР°", "С„СЌРЅС‚РµР·Рё", "Р°РЅС‚РёСѓС‚РѕРїРёСЏ", "СЃР°С‚РёСЂР°", "РјСѓР»СЊС‚С„РёР»СЊРј",
+            "РёСЃС‚РѕСЂРёС‡РµСЃРєРёР№", "РЅР°СЂРѕРґРЅР°СЏ", "РґР¶Р°Р·", "СЌСЃС‚СЂР°РґР°"
+        };
+        cout << "Р–Р°РЅСЂ:\n";
+        // Р’С‹РІРµСЃС‚Рё СЃРїРёСЃРѕРє СЃ РЅРѕРјРµСЂР°РјРё, РїРѕ 5 С€С‚СѓРє РІ СЃС‚СЂРѕРєРµ
+        for (size_t i = 0; i < genresList.size(); ++i)
+        {
+            cout << i + 1 << ". " << genresList[i] << (i % 5 == 4 ? "\n" : "  ");
+        }
+        cout << "Р’РІРµРґРёС‚Рµ РЅРѕРјРµСЂ Р¶Р°РЅСЂР°: ";
+        int genreIdx;
+        cin >> genreIdx;
+        if (genreIdx < 1 || genreIdx >(int)genresList.size())
+        {
+            cout << "РќРµРІРµСЂРЅС‹Р№ РЅРѕРјРµСЂ.\n";
+            return false;
+        }
+        newItem.genre = genresList[genreIdx - 1];     // РЈСЃС‚Р°РЅРѕРІРёС‚СЊ Р¶Р°РЅСЂ РёР· СЃРїРёСЃРєР°
+        // Р’РІРѕРґ РІРѕР·СЂР°СЃС‚РЅРѕРіРѕ СЂРµР№С‚РёРЅРіР°
+        cout << "Р’РѕР·СЂР°СЃС‚РЅРѕР№ СЂРµР№С‚РёРЅРі (0, 6, 12, 16, 18): ";
+        int rating;
+        cin >> rating;
+        if (rating != 0 && rating != 6 && rating != 12 && rating != 16 && rating != 18)
+        {
+            cout << "РќРµРІРµСЂРЅС‹Р№ СЂРµР№С‚РёРЅРі.\n";
+            return false;
+        }
+        newItem.ageRating = rating;
+        // Р’С‹Р±РѕСЂ С†РµР»РµРІРѕР№ РіСЂСѓРїРїС‹ (С†РёС„СЂРѕР№ 1..7)
+        cout << "Р¦РµР»РµРІР°СЏ РіСЂСѓРїРїР°:\n";
+        cout << "1 - РґРµС‚Рё (0-12)\n2 - РїРѕРґСЂРѕСЃС‚РєРё (13-17)\n3 - РјРѕР»РѕРґС‘Р¶СЊ (18-25)\n";
+        cout << "4 - РІР·СЂРѕСЃР»С‹Рµ (26-35)\n5 - СЃСЂРµРґРЅРёР№ РІРѕР·СЂР°СЃС‚ (36-45)\n";
+        cout << "6 - СЃС‚Р°СЂС€РµРµ РїРѕРєРѕР»РµРЅРёРµ (46-60)\n7 - РїРѕР¶РёР»С‹Рµ (60+)\n";
+        cout << "Р’Р°С€ РІС‹Р±РѕСЂ (1-7): ";
+        int groupCode;
+        cin >> groupCode;
+        switch (groupCode)
+        {
+        case 1: newItem.targetGroup = "child"; break;
+        case 2: newItem.targetGroup = "teen"; break;
+        case 3: newItem.targetGroup = "young"; break;
+        case 4: newItem.targetGroup = "adult"; break;
+        case 5: newItem.targetGroup = "middle"; break;
+        case 6: newItem.targetGroup = "senior"; break;
+        case 7: newItem.targetGroup = "elderly"; break;
+        default:
+            cout << "РќРµРІРµСЂРЅС‹Р№ РЅРѕРјРµСЂ.\n";
+            return false;
+        }
+        // Р’РІРѕРґ РїРѕРїСѓР»СЏСЂРЅРѕСЃС‚Рё
+        cout << "РџРѕРїСѓР»СЏСЂРЅРѕСЃС‚СЊ (1 - РѕС‡РµРЅСЊ РЅРёР·РєР°СЏ, 10 - РѕС‡РµРЅСЊ РІС‹СЃРѕРєР°СЏ): ";
+        int pop;
+        cin >> pop;
+        if (pop < 1 || pop > 10)
+        {
+            cout << "РџРѕРїСѓР»СЏСЂРЅРѕСЃС‚СЊ РѕС‚ 1 РґРѕ 10.\n";
+            return false;
+        }
+        newItem.popularity = pop;
+        // Р”РѕР±Р°РІРёС‚СЊ СЌР»РµРјРµРЅС‚ РІ РІРµРєС‚РѕСЂ Р±Р°Р·С‹ РґР°РЅРЅС‹С…
+        database.push_back(newItem);
+        // Р”РѕРїРёСЃР°С‚СЊ СЌР»РµРјРµРЅС‚ РІ С„Р°Р№Р» database.txt
+        ofstream file(databaseFilename, std::ios::app);
+        if (!file.is_open()) return false;
+        file << newItem.title << "|" << newItem.type << "|" << newItem.genre << "|"
+            << newItem.ageRating << "|" << newItem.targetGroup << "|" << newItem.popularity << "\n";
+        file.close();
+        cout << "РљРѕРЅС‚РµРЅС‚ СѓСЃРїРµС€РЅРѕ РґРѕР±Р°РІР»РµРЅ!\n";
+        return true;
+    }
+
+    // РћС†РµРЅРєР° РєРѕРЅС‚РµРЅС‚Р° РїРѕР»СЊР·РѕРІР°С‚РµР»РµРј
+    void rateContent()
+    {
+        while (true)                                  // Р‘РµСЃРєРѕРЅРµС‡РЅС‹Р№ С†РёРєР» РґР»СЏ РїРѕРІС‚РѕСЂРЅС‹С… РѕС†РµРЅРѕРє
+        {
+            cout << "\n--- РћС†РµРЅРєР° РєРѕРЅС‚РµРЅС‚Р° (РѕС‚ 1 РґРѕ 5) ---\n";
+            cout << "Р’РІРµРґРёС‚Рµ С‡Р°СЃС‚СЊ РЅР°Р·РІР°РЅРёСЏ РґР»СЏ РїРѕРёСЃРєР°: ";
+            cin.ignore();                             // РћС‡РёСЃС‚РёС‚СЊ Р±СѓС„РµСЂ РїРµСЂРµРґ getline
+            string query;
+            getline(cin, query);                      // Р’РІРµСЃС‚Рё РїРѕРёСЃРєРѕРІСѓСЋ СЃС‚СЂРѕРєСѓ
+            vector<int> matches;                      // РРЅРґРµРєСЃС‹ РЅР°Р№РґРµРЅРЅС‹С… СЌР»РµРјРµРЅС‚РѕРІ
+            for (size_t i = 0; i < database.size(); ++i)
+            {
+                // РџРѕРёСЃРє РїРѕРґСЃС‚СЂРѕРєРё РІ РЅР°Р·РІР°РЅРёРё 
+                if (database[i].title.find(query) != string::npos)
+                {
+                    matches.push_back(i);
+                }
+            }
+            if (matches.empty())
+            {
+                cout << "РќРёС‡РµРіРѕ РЅРµ РЅР°Р№РґРµРЅРѕ.\n";
+            }
+            else
+            {
+                // Р’С‹РІРµСЃС‚Рё РЅР°Р№РґРµРЅРЅС‹Рµ СЌР»РµРјРµРЅС‚С‹
+                cout << "РќР°Р№РґРµРЅРѕ:\n";
+                for (size_t i = 0; i < matches.size() && i < 10; ++i)
+                {
+                    cout << i + 1 << ". " << database[matches[i]].title
+                        << " (" << database[matches[i]].type << ")\n";
+                }
+                cout << "Р’С‹Р±РµСЂРёС‚Рµ РЅРѕРјРµСЂ (0 - РѕС‚РјРµРЅР°): ";
+                int idx;
+                cin >> idx;
+                if (idx != 0 && idx >= 1 && idx <= (int)matches.size())
+                {
+                    string itemTitle = database[matches[idx - 1]].title;
+                    cout << "Р’Р°С€Р° РѕС†РµРЅРєР° (1-5): ";
+                    int score;
+                    cin >> score;
+                    if (score >= 1 && score <= 5)
+                    {
+                        // РЎРѕС…СЂР°РЅРёС‚СЊ РѕС†РµРЅРєСѓ РІ РїР°РјСЏС‚СЊ Рё РІ С„Р°Р№Р»
+                        allRatings.push_back({ currentUserName, itemTitle, score });
+                        appendRating(currentUserName, itemTitle, score);
+                        cout << "РЎРїР°СЃРёР±Рѕ! РћС†РµРЅРєР° СЃРѕС…СЂР°РЅРµРЅР°.\n";
+                    }
+                    else
+                    {
+                        cout << "РћС†РµРЅРєР° РґРѕР»Р¶РЅР° Р±С‹С‚СЊ РѕС‚ 1 РґРѕ 5.\n";
+                    }
+                }
+                else if (idx != 0)
+                {
+                    cout << "РќРµРІРµСЂРЅС‹Р№ РЅРѕРјРµСЂ.\n";
+                }
+            }
+            // РЎРїСЂРѕСЃРёС‚СЊ, РїСЂРѕРґРѕР»Р¶Р°С‚СЊ Р»Рё РѕС†РµРЅРёРІР°РЅРёРµ
+            int cont;
+            cout << "РћС†РµРЅРёС‚СЊ РµС‰С‘? (1 - Р”Р°, 0 - РќРµС‚): ";
+            cin >> cont;
+            if (cont != 1) break;                     // Р’С‹Р№С‚Рё РёР· С†РёРєР»Р°, РµСЃР»Рё РѕС‚РІРµС‚ РЅРµ 1
+        }
+    }
+
+    // РђР»РіРѕСЂРёС‚Рј 1: РџСЂР°РІРёР»Р° (РІРѕР·СЂР°СЃС‚, С†РµР»РµРІР°СЏ РіСЂСѓРїРїР°, Р¶Р°РЅСЂС‹)
     vector<string> getRuleBasedRecommendations(const string& contentType)
     {
-        vector<string> results;
-        for (size_t i = 0; i < database.size(); ++i)
+        vector<string> results;                       // Р’РµРєС‚РѕСЂ РґР»СЏ СЂРµР·СѓР»СЊС‚Р°С‚РѕРІ
+        for (size_t i = 0; i < database.size(); ++i) // РџРµСЂРµР±СЂР°С‚СЊ РІСЃСЋ Р±Р°Р·Сѓ
         {
             const ContentItem& item = database[i];
-            if (item.type == contentType && isAgeAppropriate(item) && isTargetGroupMatch(item) && isGenreMatch(item))
+            // РџСЂРѕРІРµСЂРёС‚СЊ С‚РёРї, РІРѕР·СЂР°СЃС‚, С†РµР»РµРІСѓСЋ РіСЂСѓРїРїСѓ Рё Р¶Р°РЅСЂ
+            if (item.type == contentType && isAgeAppropriate(item) &&
+                isTargetGroupMatch(item) && isGenreMatch(item))
             {
-                results.push_back(item.title);
-                if (results.size() >= 5) break;
+                results.push_back(item.title);        // Р”РѕР±Р°РІРёС‚СЊ РЅР°Р·РІР°РЅРёРµ
+                if (results.size() >= 5) break;       // РћРіСЂР°РЅРёС‡РёС‚СЊ РїСЏС‚СЊСЋ СЂРµРєРѕРјРµРЅРґР°С†РёСЏРјРё
             }
         }
-        return results;
+        return results;                               // Р’РµСЂРЅСѓС‚СЊ СЃРїРёСЃРѕРє
     }
 
-    // Алгоритм 2: Коллаборативная фильтрация 
-    // Находит топ-2 пользователей, наиболее похожих на текущего (по возрасту и жанрам),
-    // затем рекомендует элементы, которые они высоко оценили (>=4), но текущий ещё не оценивал.
-    // Возвращает вектор названий, отсортированных по сумме оценок соседей.
+    // РђР»РіРѕСЂРёС‚Рј 2: РљРѕР»Р»Р°Р±РѕСЂР°С‚РёРІРЅР°СЏ С„РёР»СЊС‚СЂР°С†РёСЏ (РєРѕСЃРёРЅСѓСЃРЅРѕРµ СЃС…РѕРґСЃС‚РІРѕ)
     vector<string> getCollaborativeRecommendations(const string& contentType)
     {
-        // Используем предопределённые характеристики фейковых пользователей.
-        // Создадим структуру "синтетический пользователь" с возрастом, жанрами и оценками.
-        struct SyntheticUser
+        // РџРѕР»СѓС‡РёС‚СЊ РѕС†РµРЅРєРё С‚РµРєСѓС‰РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ
+        map<string, int> currentRatings = getUserRatingsMap(currentUserName);
+        // Р•СЃР»Рё РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ РЅРёС‡РµРіРѕ РЅРµ РѕС†РµРЅРёР», Р°Р»РіРѕСЂРёС‚Рј РЅРµ РјРѕР¶РµС‚ СЂР°Р±РѕС‚Р°С‚СЊ
+        if (currentRatings.empty())
         {
-            int id;
-            int age;
-            vector<string> genres;
-            vector<Rating> ratings; // оценки только этого пользователя
-        };
-
-        // Определим 6 фейковых пользователей с возрастом и любимыми жанрами
-        vector<SyntheticUser> synthUsers;
-        // Пользователь 1: подросток 15 лет, жанры: фэнтези, комедия
-        synthUsers.push_back({ 1, 15, {"фэнтези", "комедия"}, {} });
-        // Пользователь 2: 20 лет, жанры: драма, рок
-        synthUsers.push_back({ 2, 20, {"драма", "рок"}, {} });
-        // Пользователь 3: 30 лет, жанры: комедия, поп
-        synthUsers.push_back({ 3, 30, {"комедия", "поп"}, {} });
-        // Пользователь 4: 40 лет, жанры: драма, классика
-        synthUsers.push_back({ 4, 40, {"драма", "классика"}, {} });
-        // Пользователь 5: 55 лет, жанры: исторический, народная
-        synthUsers.push_back({ 5, 55, {"исторический", "народная"}, {} });
-        // Пользователь 6: 70 лет, жанры: военный, авторская
-        synthUsers.push_back({ 6, 70, {"военный", "авторская"}, {} });
-
-        // Заполним оценки для каждого синтетического пользователя из allRatings
-        for (const Rating& r : allRatings)
+            cout << "  [РЎРѕРІРµС‚: РїРѕСЃС‚Р°РІСЊС‚Рµ РЅРµСЃРєРѕР»СЊРєРѕ РѕС†РµРЅРѕРє, С‡С‚РѕР±С‹ Р·Р°СЂР°Р±РѕС‚Р°Р»Р° РєРѕР»Р»Р°Р±РѕСЂР°С‚РёРІРЅР°СЏ С„РёР»СЊС‚СЂР°С†РёСЏ]\n";
+            return {};
+        }
+        // РџРѕР»СѓС‡РёС‚СЊ СЃРїРёСЃРѕРє РґСЂСѓРіРёС… РїРѕР»СЊР·РѕРІР°С‚РµР»РµР№
+        vector<string> otherUsers = getAllOtherUsers();
+        if (otherUsers.empty()) return {};            // РќРµС‚ РґСЂСѓРіРёС… РїРѕР»СЊР·РѕРІР°С‚РµР»РµР№
+        // Р’С‹С‡РёСЃР»РёС‚СЊ СЃС…РѕРґСЃС‚РІРѕ СЃ РєР°Р¶РґС‹Рј РґСЂСѓРіРёРј РїРѕР»СЊР·РѕРІР°С‚РµР»РµРј
+        vector<pair<string, double>> similarities;    // РРјСЏ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ -> РѕС†РµРЅРєР° СЃС…РѕРґСЃС‚РІР°
+        for (const string& other : otherUsers)
         {
-            for (SyntheticUser& su : synthUsers)
+            map<string, int> otherRatings = getUserRatingsMap(other);
+            double sim = cosineSimilarity(currentRatings, otherRatings);
+            if (sim > 0.0)                            // РЈС‡РёС‚С‹РІР°С‚СЊ С‚РѕР»СЊРєРѕ РїРѕР»РѕР¶РёС‚РµР»СЊРЅРѕРµ СЃС…РѕРґСЃС‚РІРѕ
             {
-                if (su.id == r.userId)
-                {
-                    su.ratings.push_back(r);
-                    break;
-                }
+                similarities.push_back({ other, sim });
             }
         }
-
-        // Вычислим сходство текущего пользователя с каждым синтетическим.
-        // Метрика: разница в возрасте (чем меньше, тем лучше) + количество общих жанров.
-        vector<pair<int, double>> similarities; // (userId, score)
-        for (const SyntheticUser& su : synthUsers)
-        {
-            double ageDiff = std::abs(userAge - su.age) / 10.0; // нормализуем
-            int commonGenres = 0;
-            for (const string& g : su.genres)
-            {
-                if (std::find(preferredGenres.begin(), preferredGenres.end(), g) != preferredGenres.end())
-                {
-                    commonGenres++;
-                }
-            }
-            double genreSimilarity = commonGenres / (double)std::max(su.genres.size(), preferredGenres.size());
-            // Итоговая близость: чем меньше ageDiff и больше genreSimilarity, тем лучше.
-            // Преобразуем в оценку: score = genreSimilarity - ageDiff*0.1.
-            double score = genreSimilarity - ageDiff * 0.1;
-            similarities.push_back({ su.id, score });
-        }
-
-        // Сортируем по убыванию score
+        // РћС‚СЃРѕСЂС‚РёСЂРѕРІР°С‚СЊ РїРѕ СѓР±С‹РІР°РЅРёСЋ СЃС…РѕРґСЃС‚РІР°
         std::sort(similarities.begin(), similarities.end(),
-            [](const pair<int, double>& a, const pair<int, double>& b) { return a.second > b.second; });
-
-        // Берём двух ближайших соседей
-        vector<int> neighborIds;
+            [](const pair<string, double>& a, const pair<string, double>& b)
+            {
+                return a.second > b.second;
+            });
+        // Р’С‹Р±СЂР°С‚СЊ РґРІСѓС… Р±Р»РёР¶Р°Р№С€РёС… СЃРѕСЃРµРґРµР№
+        vector<string> neighbors;
         for (int i = 0; i < 2 && i < (int)similarities.size(); ++i)
         {
-            neighborIds.push_back(similarities[i].first);
+            neighbors.push_back(similarities[i].first);
         }
-
-        // Собираем все оценки соседей для элементов заданного contentType
-        map<string, int> itemScore; // название -> суммарная оценка
-        for (int nid : neighborIds)
+        if (neighbors.empty()) return {};             // РќРµС‚ РїРѕРґС…РѕРґСЏС‰РёС… СЃРѕСЃРµРґРµР№
+        // РњРЅРѕР¶РµСЃС‚РІРѕ СЌР»РµРјРµРЅС‚РѕРІ, СѓР¶Рµ РѕС†РµРЅС‘РЅРЅС‹С… С‚РµРєСѓС‰РёРј РїРѕР»СЊР·РѕРІР°С‚РµР»РµРј
+        set<string> alreadyRated;
+        for (const auto& p : currentRatings) alreadyRated.insert(p.first);
+        // РЎРѕР±СЂР°С‚СЊ СЌР»РµРјРµРЅС‚С‹, РІС‹СЃРѕРєРѕ РѕС†РµРЅС‘РЅРЅС‹Рµ СЃРѕСЃРµРґСЏРјРё, РЅРѕ РЅРµ РѕС†РµРЅС‘РЅРЅС‹Рµ С‚РµРєСѓС‰РёРј
+        map<string, int> itemScore;                   // РќР°Р·РІР°РЅРёРµ -> СЃСѓРјРјР° РѕС†РµРЅРѕРє РѕС‚ СЃРѕСЃРµРґРµР№
+        for (const string& neighbor : neighbors)
         {
-            for (const SyntheticUser& su : synthUsers)
+            map<string, int> neighborRatings = getUserRatingsMap(neighbor);
+            for (const auto& pairRating : neighborRatings)
             {
-                if (su.id == nid)
+                const string& title = pairRating.first;
+                int score = pairRating.second;
+                // РРЅС‚РµСЂРµСЃСѓСЋС‚ С‚РѕР»СЊРєРѕ РѕС†РµРЅРєРё 4 Рё 5
+                if (score >= 4 && alreadyRated.find(title) == alreadyRated.end())
                 {
-                    for (const Rating& r : su.ratings)
+                    // РџСЂРѕРІРµСЂРёС‚СЊ, РїРѕРґС…РѕРґРёС‚ Р»Рё СЌР»РµРјРµРЅС‚ РїРѕ С‚РёРїСѓ Рё РІРѕР·СЂР°СЃС‚Сѓ
+                    for (const ContentItem& item : database)
                     {
-                        if (r.score >= 4) // берём только высокие оценки
+                        if (item.title == title && item.type == contentType && isAgeAppropriate(item))
                         {
-                            const ContentItem& item = database[r.itemId];
-                            if (item.type == contentType && isAgeAppropriate(item)) // также проверяем возраст
-                            {
-                                itemScore[item.title] += r.score;
-                            }
+                            itemScore[title] += score;  
+                            break;
                         }
                     }
-                    break;
                 }
             }
         }
-
-        // Преобразуем в вектор и сортируем по убыванию суммы
+        // РџСЂРµРѕР±СЂР°Р·РѕРІР°С‚СЊ map РІ РІРµРєС‚РѕСЂ РґР»СЏ СЃРѕСЂС‚РёСЂРѕРІРєРё
         vector<pair<string, int>> sortedItems(itemScore.begin(), itemScore.end());
         std::sort(sortedItems.begin(), sortedItems.end(),
-            [](const pair<string, int>& a, const pair<string, int>& b) { return a.second > b.second; });
-
+            [](const pair<string, int>& a, const pair<string, int>& b)
+            {
+                return a.second > b.second;
+            });
+        // Р’Р·СЏС‚СЊ РїРµСЂРІС‹Рµ 5 РЅР°Р·РІР°РЅРёР№
         vector<string> results;
         for (size_t i = 0; i < sortedItems.size() && results.size() < 5; ++i)
         {
@@ -385,26 +541,25 @@ public:
         return results;
     }
 
-
-    // Алгоритм 3: По популярности (с учетом возрастного рейтинга)
-    // Возвращает топ-5 самых популярных элементов типа contentType,
-    // подходящих по возрасту (без учёта жанров и целевой группы)
+    // РђР»РіРѕСЂРёС‚Рј 3: РџРѕРїСѓР»СЏСЂРЅРѕСЃС‚СЊ (СѓС‡РёС‚С‹РІР°РµС‚ С‚РѕР»СЊРєРѕ РІРѕР·СЂР°СЃС‚)
     vector<string> getPopularityRecommendations(const string& contentType)
     {
-        // Собираем все элементы нужного типа, подходящие по возрасту
+        // РЎРѕР±СЂР°С‚СЊ РІСЃРµ СЌР»РµРјРµРЅС‚С‹ РЅСѓР¶РЅРѕРіРѕ С‚РёРїР°, РїРѕРґС…РѕРґСЏС‰РёРµ РїРѕ РІРѕР·СЂР°СЃС‚Сѓ
         vector<const ContentItem*> candidates;
         for (size_t i = 0; i < database.size(); ++i)
         {
-            const ContentItem& item = database[i];
-            if (item.type == contentType && isAgeAppropriate(item))
+            if (database[i].type == contentType && isAgeAppropriate(database[i]))
             {
-                candidates.push_back(&item);
+                candidates.push_back(&database[i]);    // Р”РѕР±Р°РІРёС‚СЊ СѓРєР°Р·Р°С‚РµР»СЊ
             }
         }
-        // Сортируем по убыванию popularity
+        // РћС‚СЃРѕСЂС‚РёСЂРѕРІР°С‚СЊ РїРѕ СѓР±С‹РІР°РЅРёСЋ РїРѕРїСѓР»СЏСЂРЅРѕСЃС‚Рё
         std::sort(candidates.begin(), candidates.end(),
-            [](const ContentItem* a, const ContentItem* b) { return a->popularity > b->popularity; });
-
+            [](const ContentItem* a, const ContentItem* b)
+            {
+                return a->popularity > b->popularity;
+            });
+        // Р’Р·СЏС‚СЊ РїРµСЂРІС‹Рµ 5 РЅР°Р·РІР°РЅРёР№
         vector<string> results;
         for (size_t i = 0; i < candidates.size() && results.size() < 5; ++i)
         {
@@ -413,128 +568,204 @@ public:
         return results;
     }
 
-    
-    // Вывод всех рекомендаций 
+    // РђР»РіРѕСЂРёС‚Рј 4: Р“РёР±СЂРёРґРЅС‹Р№ (РІР·РІРµС€РµРЅРЅР°СЏ СЃСѓРјРјР° С‚СЂС‘С… РїСЂРµРґС‹РґСѓС‰РёС…)
+    vector<string> getHybridRecommendations(const string& contentType)
+    {
+        // РџРѕР»СѓС‡РёС‚СЊ СЂРµРєРѕРјРµРЅРґР°С†РёРё РѕС‚ РєР°Р¶РґРѕРіРѕ РёР· С‚СЂС‘С… Р°Р»РіРѕСЂРёС‚РјРѕРІ
+        vector<string> ruleRecs = getRuleBasedRecommendations(contentType);
+        vector<string> collabRecs = getCollaborativeRecommendations(contentType);
+        vector<string> popRecs = getPopularityRecommendations(contentType);
+        // Р’РµСЃР° Р°Р»РіРѕСЂРёС‚РјРѕРІ
+        const double RULE_WEIGHT = 0.5;
+        const double COLLAB_WEIGHT = 0.3;
+        const double POP_WEIGHT = 0.2;
+        map<string, double> weightMap;                // РќР°Р·РІР°РЅРёРµ -> РёС‚РѕРіРѕРІС‹Р№ РІРµСЃ
+        // Р’РЅСѓС‚СЂРµРЅРЅСЏСЏ С„СѓРЅРєС†РёСЏ РґР»СЏ РґРѕР±Р°РІР»РµРЅРёСЏ РІРµСЃРѕРІ СЃ СѓС‡С‘С‚РѕРј РїРѕР·РёС†РёРё РІ СЃРїРёСЃРєРµ
+        auto addWeights = [&weightMap](const vector<string>& recs, double algoWeight, double baseScore = 5.0)
+            {
+                double score = baseScore;                 // РџРµСЂРІР°СЏ РїРѕР·РёС†РёСЏ РїРѕР»СѓС‡Р°РµС‚ baseScore
+                for (const string& title : recs)
+                {
+                    weightMap[title] += score * algoWeight; // РџСЂРёР±Р°РІРёС‚СЊ РІР·РІРµС€РµРЅРЅС‹Р№ РІРєР»Р°Рґ
+                    score -= 1.0;                         // РЎР»РµРґСѓСЋС‰Р°СЏ РїРѕР·РёС†РёСЏ РЅР° 1 РјРµРЅСЊС€Рµ
+                    if (score < 1.0) break;               // РќРµ РѕРїСѓСЃРєР°С‚СЊСЃСЏ РЅРёР¶Рµ 1
+                }
+            };
+        // Р”РѕР±Р°РІРёС‚СЊ РІРєР»Р°РґС‹ РѕС‚ РєР°Р¶РґРѕРіРѕ Р°Р»РіРѕСЂРёС‚РјР°
+        addWeights(ruleRecs, RULE_WEIGHT, 5.0);
+        addWeights(collabRecs, COLLAB_WEIGHT, 5.0);
+        addWeights(popRecs, POP_WEIGHT, 5.0);
+        // РџСЂРµРѕР±СЂР°Р·РѕРІР°С‚СЊ map РІ РІРµРєС‚РѕСЂ РґР»СЏ СЃРѕСЂС‚РёСЂРѕРІРєРё
+        vector<pair<string, double>> sorted(weightMap.begin(), weightMap.end());
+        std::sort(sorted.begin(), sorted.end(),
+            [](const pair<string, double>& a, const pair<string, double>& b)
+            {
+                return a.second > b.second;
+            });
+        // Р’Р·СЏС‚СЊ РїРµСЂРІС‹Рµ 5 РЅР°Р·РІР°РЅРёР№
+        vector<string> results;
+        for (size_t i = 0; i < sorted.size() && results.size() < 5; ++i)
+        {
+            results.push_back(sorted[i].first);
+        }
+        return results;
+    }
+
+    // Р’С‹РІРѕРґ РІСЃРµС… СЂРµРєРѕРјРµРЅРґР°С†РёР№ РґР»СЏ РІСЃРµС… С‚РёРїРѕРІ РєРѕРЅС‚РµРЅС‚Р° СЃ РјРµС‚СЂРёРєР°РјРё
     void printAllRecommendations()
     {
-        cout << "\n==================== РЕКОМЕНДАЦИИ ====================\n";
-        cout << "Ваша возрастная группа: " << userGroup << "\n";
-        // Преобразование группы в читаемый вид
-        if (userGroup == "child") cout << " (0-12 лет)\n";
-        else if (userGroup == "teen") cout << " (13-17 лет)\n";
-        else if (userGroup == "young") cout << " (18-25 лет)\n";
-        else if (userGroup == "adult") cout << " (26-35 лет)\n";
-        else if (userGroup == "middle") cout << " (36-45 лет)\n";
-        else if (userGroup == "senior") cout << " (46-60 лет)\n";
-        else cout << " (60+ лет)\n";
-
+        cout << "\n==================== Р Р•РљРћРњР•РќР”РђР¦РР ====================\n";
+        cout << "РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ: " << currentUserName << "\n";
+        cout << "Р’РѕР·СЂР°СЃС‚РЅР°СЏ РіСЂСѓРїРїР°: " << userGroup;
+        if (userGroup == "child") cout << " (0-12 Р»РµС‚)\n";
+        else if (userGroup == "teen") cout << " (13-17 Р»РµС‚)\n";
+        else if (userGroup == "young") cout << " (18-25 Р»РµС‚)\n";
+        else if (userGroup == "adult") cout << " (26-35 Р»РµС‚)\n";
+        else if (userGroup == "middle") cout << " (36-45 Р»РµС‚)\n";
+        else if (userGroup == "senior") cout << " (46-60 Р»РµС‚)\n";
+        else cout << " (60+ Р»РµС‚)\n";
+        // РЎРїРёСЃРѕРє С‚РёРїРѕРІ РєРѕРЅС‚РµРЅС‚Р° Рё РёС… СЂСѓСЃСЃРєРёС… РЅР°Р·РІР°РЅРёР№
         vector<string> types = { "film", "series", "book", "music" };
-        vector<string> typeNames = { "Фильмы", "Сериалы", "Книги", "Музыка" };
-
-        // Для каждого типа контента выводим результаты трёх алгоритмов
+        vector<string> typeNames = { "Р¤РёР»СЊРјС‹", "РЎРµСЂРёР°Р»С‹", "РљРЅРёРіРё", "РњСѓР·С‹РєР°" };
+        // Р¦РёРєР» РїРѕ С‡РµС‚С‹СЂС‘Рј С‚РёРїР°Рј РєРѕРЅС‚РµРЅС‚Р°
         for (size_t t = 0; t < types.size(); ++t)
         {
             cout << "\n======== " << typeNames[t] << " ========\n";
-
-            // Алгоритм 1: Правила
-            cout << "--- Алгоритм 1 (Правила) ---\n";
-            vector<string> recs1 = getRuleBasedRecommendations(types[t]);
-            if (recs1.empty()) cout << "  (нет рекомендаций)\n";
-            else for (const string& s : recs1) cout << "  - " << s << "\n";
-
-            // Алгоритм 2: Коллаборативная фильтрация
-            cout << "--- Алгоритм 2 (Коллаборативная) ---\n";
-            vector<string> recs2 = getCollaborativeRecommendations(types[t]);
-            if (recs2.empty()) cout << "  (нет рекомендаций)\n";
-            else for (const string& s : recs2) cout << "  - " << s << "\n";
-
-            // Алгоритм 3: Популярность
-            cout << "--- Алгоритм 3 (Популярность) ---\n";
-            vector<string> recs3 = getPopularityRecommendations(types[t]);
-            if (recs3.empty()) cout << "  (нет рекомендаций)\n";
-            else for (const string& s : recs3) cout << "  - " << s << "\n";
+            // Р›СЏРјР±РґР°-С„СѓРЅРєС†РёСЏ РґР»СЏ РІС‹РІРѕРґР° РѕРґРЅРѕРіРѕ Р°Р»РіРѕСЂРёС‚РјР°
+            auto printRecs = [this](const string& algoName, const vector<string>& recs)
+                {
+                    cout << "--- " << algoName << " ---\n";
+                    if (recs.empty())
+                    {
+                        cout << "  (РЅРµС‚ СЂРµРєРѕРјРµРЅРґР°С†РёР№)\n";
+                    }
+                    else
+                    {
+                        for (const string& s : recs)
+                        {
+                            cout << "  - " << s << "\n";
+                        }
+                    }
+                    cout << "  [РўРѕС‡РЅРѕСЃС‚СЊ: " << precision(recs) * 100 << "%]\n";
+                    cout << "  [РЎСЂРµРґРЅСЏСЏ РїРѕРїСѓР»СЏСЂРЅРѕСЃС‚СЊ: " << avgPopularity(recs) << "]\n";
+                };
+            // Р’С‹Р·РІР°С‚СЊ Р»СЏРјР±РґСѓ РґР»СЏ РєР°Р¶РґРѕРіРѕ Р°Р»РіРѕСЂРёС‚РјР°
+            printRecs("РђР»РіРѕСЂРёС‚Рј 1 (РџСЂР°РІРёР»Р°)", getRuleBasedRecommendations(types[t]));
+            printRecs("РђР»РіРѕСЂРёС‚Рј 2 (РљРѕР»Р»Р°Р±РѕСЂР°С‚РёРІРЅР°СЏ)", getCollaborativeRecommendations(types[t]));
+            printRecs("РђР»РіРѕСЂРёС‚Рј 3 (РџРѕРїСѓР»СЏСЂРЅРѕСЃС‚СЊ)", getPopularityRecommendations(types[t]));
+            printRecs("РђР»РіРѕСЂРёС‚Рј 4 (Р“РёР±СЂРёРґРЅС‹Р№)", getHybridRecommendations(types[t]));
         }
-
-        // Сравнительные комментарии
-        cout << "\n========== Описание алгоритмов ==========\n";
-        cout << "Алгоритм 1 (Правила): Учитывает ваш возраст, жанры и целевую группу контента.\n";
-        cout << "Алгоритм 2 (Коллаборативный): Использует оценки похожих пользователей (синтетическая база).\n";
-        cout << "Алгоритм 3 (Популярный): Рекомендует самое популярное, без персонализации.\n";
     }
 };
 
-// Функция вывода меню жанров
+// Р¤СѓРЅРєС†РёСЏ РѕС‚РѕР±СЂР°Р¶РµРЅРёСЏ РјРµРЅСЋ Р¶Р°РЅСЂРѕРІ
 void showGenreMenu()
 {
-    cout << "\nДоступные жанры (выберите номера через пробел, 0 - конец):\n";
-    cout << "1. комедия   2. драма     3. фантастика   4. ужасы\n";
-    cout << "5. детектив  6. рок       7. поп          8. хип-хоп\n";
-    cout << "9. классика 10. спорт    11. военный     12. мистика\n";
-    cout << "13. фэнтези 14. антиутопия 15. сатира    16. мультфильм\n";
-    cout << "17. исторический 18. народная  19. авторская  20. джаз\n";
-    cout << "21. эстрада 22. музыкальный 23. роман\n";
-    cout << "Ваш выбор: ";
+    cout << "\nР”РѕСЃС‚СѓРїРЅС‹Рµ Р¶Р°РЅСЂС‹ (РІС‹Р±РµСЂРёС‚Рµ РЅРѕРјРµСЂР° С‡РµСЂРµР· РїСЂРѕР±РµР», 0 - РєРѕРЅРµС†):\n";
+    cout << "1. РєРѕРјРµРґРёСЏ   2. РґСЂР°РјР°     3. С„Р°РЅС‚Р°СЃС‚РёРєР°   4. СѓР¶Р°СЃС‹\n";
+    cout << "5. РґРµС‚РµРєС‚РёРІ  6. СЂРѕРє       7. РїРѕРї          8. С…РёРї-С…РѕРї\n";
+    cout << "9. РєР»Р°СЃСЃРёРєР° 10. СЃРїРѕСЂС‚    11. РІРѕРµРЅРЅС‹Р№     12. РјРёСЃС‚РёРєР°\n";
+    cout << "13. С„СЌРЅС‚РµР·Рё 14. Р°РЅС‚РёСѓС‚РѕРїРёСЏ 15. СЃР°С‚РёСЂР°    16. РјСѓР»СЊС‚С„РёР»СЊРј\n";
+    cout << "17. РёСЃС‚РѕСЂРёС‡РµСЃРєРёР№ 18. РЅР°СЂРѕРґРЅР°СЏ  19. РґР¶Р°Р·   20. СЌСЃС‚СЂР°РґР°\n";
+    cout << "Р’Р°С€ РІС‹Р±РѕСЂ: ";
 }
 
+// Р“Р»Р°РІРЅР°СЏ С„СѓРЅРєС†РёСЏ
 int main()
 {
-    setlocale(LC_ALL, "Russian"); //Подключение русского языка
+    // РќР°СЃС‚СЂРѕР№РєР° РєРѕРґРёСЂРѕРІРєРё РґР»СЏ РєРѕСЂСЂРµРєС‚РЅРѕРіРѕ РѕС‚РѕР±СЂР°Р¶РµРЅРёСЏ СЂСѓСЃСЃРєРѕРіРѕ С‚РµРєСЃС‚Р° РІ РєРѕРЅСЃРѕР»Рё Windows
+    SetConsoleCP(1251);
+    SetConsoleOutputCP(1251);
+    setlocale(LC_ALL, "Russian");
 
-    Recommender recommender;
-    // Инициализируем синтетические оценки после заполнения базы
-    recommender.initRatings();
+    Recommender recommender;                          // РЎРѕР·РґР°С‚СЊ РѕР±СЉРµРєС‚ СЂРµРєРѕРјРµРЅРґР°С‚РµР»СЊРЅРѕР№ СЃРёСЃС‚РµРјС‹
+    // РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ: Р·Р°РіСЂСѓР·РёС‚СЊ Р±Р°Р·Сѓ РєРѕРЅС‚РµРЅС‚Р° Рё РѕС†РµРЅРєРё РёР· С„Р°Р№Р»РѕРІ
+    if (!recommender.init("database.txt", "ratings.txt"))
+    {
+        cout << "РћС€РёР±РєР°: РЅРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ database.txt\n";
+        return 1;                                    
+    }
+
+    string userName;
+    cout << "Р’РІРµРґРёС‚Рµ РІР°С€Рµ РёРјСЏ (РґР»СЏ РёРґРµРЅС‚РёС„РёРєР°С†РёРё): ";
+    cin >> userName;
+    recommender.setCurrentUser(userName);             // РЈСЃС‚Р°РЅРѕРІРёС‚СЊ РёРјСЏ С‚РµРєСѓС‰РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ
+
+    // Р”РѕР±Р°РІР»РµРЅРёРµ РЅРѕРІРѕРіРѕ РєРѕРЅС‚РµРЅС‚Р° (РІРѕР·РјРѕР¶РЅРѕСЃС‚СЊ РјРЅРѕРіРѕРєСЂР°С‚РЅРѕРіРѕ РґРѕР±Р°РІР»РµРЅРёСЏ)
+    int addChoice;
+    cout << "РҐРѕС‚РёС‚Рµ РґРѕР±Р°РІРёС‚СЊ РЅРѕРІС‹Р№ РєРѕРЅС‚РµРЅС‚? (1 - Р”Р°, 0 - РќРµС‚): ";
+    cin >> addChoice;
+    while (addChoice == 1)                            // РџРѕРєР° РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ С…РѕС‡РµС‚ РґРѕР±Р°РІР»СЏС‚СЊ
+    {
+        recommender.addContentItem();                 // Р’С‹Р·РІР°С‚СЊ РјРµС‚РѕРґ РґРѕР±Р°РІР»РµРЅРёСЏ
+        cout << "Р”РѕР±Р°РІРёС‚СЊ РµС‰С‘? (1 - Р”Р°, 0 - РќРµС‚): ";
+        cin >> addChoice;
+    }
 
     int age = 0;
-    cout << "Добро пожаловать в рекомендательную систему!\n";
-    cout << "Введите ваш возраст: ";
+    cout << "\nР”РѕР±СЂРѕ РїРѕР¶Р°Р»РѕРІР°С‚СЊ РІ СЂРµРєРѕРјРµРЅРґР°С‚РµР»СЊРЅСѓСЋ СЃРёСЃС‚РµРјСѓ, " << userName << "!\n";
+    cout << "Р’РІРµРґРёС‚Рµ РІР°С€ РІРѕР·СЂР°СЃС‚: ";
     cin >> age;
+    // РџСЂРѕРІРµСЂРєР° РєРѕСЂСЂРµРєС‚РЅРѕСЃС‚Рё РІРѕР·СЂР°СЃС‚Р° (РѕС‚ 0 РґРѕ 120)
     while (age < 0 || age > 120)
     {
-        cout << "Некорректный возраст: ";
+        cout << "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РІРѕР·СЂР°СЃС‚, РїРѕРІС‚РѕСЂРёС‚Рµ: ";
         cin >> age;
     }
-    recommender.setUserAge(age);
+    recommender.setUserAge(age);                      // РЈСЃС‚Р°РЅРѕРІРёС‚СЊ РІРѕР·СЂР°СЃС‚
 
-    // Список всех возможных жанров (для проверки)
+    // РЎРїРёСЃРѕРє РІСЃРµС… Р¶Р°РЅСЂРѕРІ (РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РґР»СЏ РїСЂРѕРІРµСЂРєРё РєРѕСЂСЂРµРєС‚РЅРѕСЃС‚Рё РІРІРѕРґР°)
     vector<string> allGenres = {
-        "комедия", "драма", "фантастика", "ужасы", "детектив",
-        "рок", "поп", "хип-хоп", "классика", "спорт", "военный",
-        "мистика", "фэнтези", "антиутопия", "сатира", "мультфильм",
-        "исторический", "народная", "авторская", "джаз", "эстрада",
-        "музыкальный", "роман"
+        "РєРѕРјРµРґРёСЏ", "РґСЂР°РјР°", "С„Р°РЅС‚Р°СЃС‚РёРєР°", "СѓР¶Р°СЃС‹", "РґРµС‚РµРєС‚РёРІ",
+        "СЂРѕРє", "РїРѕРї", "С…РёРї-С…РѕРї", "РєР»Р°СЃСЃРёРєР°", "СЃРїРѕСЂС‚", "РІРѕРµРЅРЅС‹Р№",
+        "РјРёСЃС‚РёРєР°", "С„СЌРЅС‚РµР·Рё", "Р°РЅС‚РёСѓС‚РѕРїРёСЏ", "СЃР°С‚РёСЂР°", "РјСѓР»СЊС‚С„РёР»СЊРј",
+        "РёСЃС‚РѕСЂРёС‡РµСЃРєРёР№", "РЅР°СЂРѕРґРЅР°СЏ", "РґР¶Р°Р·", "СЌСЃС‚СЂР°РґР°"
     };
-    vector<string> chosenGenres;
-
-    showGenreMenu();
+    vector<string> chosenGenres;                      // Р’С‹Р±СЂР°РЅРЅС‹Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»РµРј Р¶Р°РЅСЂС‹
+    showGenreMenu();                                  // РџРѕРєР°Р·Р°С‚СЊ РјРµРЅСЋ Р¶Р°РЅСЂРѕРІ
     int choice;
     while (true)
     {
         cin >> choice;
-        if (choice == 0) break;
+        if (choice == 0) break;                       // 0 - Р·Р°РєРѕРЅС‡РёС‚СЊ РІС‹Р±РѕСЂ
         if (choice >= 1 && choice <= (int)allGenres.size())
         {
             string genre = allGenres[choice - 1];
+            // РџСЂРѕРІРµСЂРёС‚СЊ, РЅРµ РІС‹Р±СЂР°РЅ Р»Рё СѓР¶Рµ СЌС‚РѕС‚ Р¶Р°РЅСЂ
             if (std::find(chosenGenres.begin(), chosenGenres.end(), genre) == chosenGenres.end())
             {
                 chosenGenres.push_back(genre);
-                cout << "Добавлен жанр: " << genre << "\n";
+                cout << "Р”РѕР±Р°РІР»РµРЅ Р¶Р°РЅСЂ: " << genre << "\n";
             }
-            else cout << "Уже выбран.\n";
+            else
+            {
+                cout << "РЈР¶Рµ РІС‹Р±СЂР°РЅ.\n";
+            }
         }
-        else cout << "Неверный номер.\n";
-        cout << "Следующий (0 - закончить): ";
+        else
+        {
+            cout << "РќРµРІРµСЂРЅС‹Р№ РЅРѕРјРµСЂ.\n";
+        }
+        cout << "РЎР»РµРґСѓСЋС‰РёР№ (0 - Р·Р°РєРѕРЅС‡РёС‚СЊ): ";
     }
-    if (chosenGenres.empty())
+    if (chosenGenres.empty())                         // Р•СЃР»Рё Р¶Р°РЅСЂС‹ РЅРµ РІС‹Р±СЂР°РЅС‹, РґРѕР±Р°РІРёС‚СЊ РєРѕРјРµРґРёСЋ
     {
-        chosenGenres.push_back("комедия");
-        cout << "Добавлена комедия по умолчанию.\n";
+        chosenGenres.push_back("РєРѕРјРµРґРёСЏ");
+        cout << "Р–Р°РЅСЂС‹ РЅРµ РІС‹Р±СЂР°РЅС‹, РґРѕР±Р°РІР»РµРЅР° РєРѕРјРµРґРёСЏ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ.\n";
     }
-    recommender.setPreferredGenres(chosenGenres);
+    recommender.setPreferredGenres(chosenGenres);     // РџРµСЂРµРґР°С‚СЊ РїСЂРµРґРїРѕС‡С‚РµРЅРёСЏ РІ СЃРёСЃС‚РµРјСѓ
 
+    // РћС†РµРЅРёРІР°РЅРёРµ РєРѕРЅС‚РµРЅС‚Р° (РІРЅСѓС‚СЂРё С„СѓРЅРєС†РёРё РµСЃС‚СЊ СЃРІРѕР№ С†РёРєР» РїРѕРІС‚РѕСЂРµРЅРёСЏ)
+    int rateChoice;
+    cout << "\nРҐРѕС‚РёС‚Рµ РѕС†РµРЅРёС‚СЊ РєР°РєРѕР№-Р»РёР±Рѕ РєРѕРЅС‚РµРЅС‚ (1-5)? (1 - Р”Р°, 0 - РќРµС‚): ";
+    cin >> rateChoice;
+    if (rateChoice == 1) recommender.rateContent();
+
+    // Р’С‹РІРµСЃС‚Рё РёС‚РѕРіРѕРІС‹Рµ СЂРµРєРѕРјРµРЅРґР°С†РёРё
     recommender.printAllRecommendations();
 
-    cout << "\nНажмите Enter для выхода.";
-    cin.ignore();
-    cin.get();
-    return 0; //Завершение работы программы
+    cout << "\nРќР°Р¶РјРёС‚Рµ Enter РґР»СЏ РІС‹С…РѕРґР°...";
+    cin.ignore();                                  
+    cin.get();                                        // РћР¶РёРґР°РЅРёРµ РЅР°Р¶Р°С‚РёСЏ РєР»Р°РІРёС€Рё Enter
+    return 0;                                         // Р—Р°РІРµСЂС€РµРЅРёРµ СЂР°Р±РѕС‚С‹ РїСЂРѕРіСЂР°РјРјС‹
 }
